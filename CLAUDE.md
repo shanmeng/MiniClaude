@@ -72,7 +72,7 @@ Flow: `cli.py` → `AgentLoop` (`loop.py`) → `LLMProvider` / `ToolRegistry` / 
   1. **Red:** write the failing test(s) only, run them, confirm they fail for the right reason, then commit with `test(permissions): red - <criterion>`.
   2. **Green:** write the minimum code to pass, run the full suite, then commit with `feat(permissions): green - <criterion>`.
   3. **Refactor:** clean up with all tests still green, then commit with `refactor(permissions): <what>` (skip if there is nothing to clean up).
-- **Explore → Plan → Implement → Commit for F1 (agent loop + tools).** Explore with Glob, Grep and Read. Plan in Plan mode and save the approved plan to `docs/plans/<feature>.md`. Implement in small steps with tests alongside. Use at least three focused commits (`feat(tools): ...`, `feat(loop): ...`, `feat(cli): ...`).
+- **Explore → Plan → Implement → Commit for F1 (agent loop + tools).** Explore read-only: find files and search content with the Glob/Grep tools when the session has them, otherwise with `rg`/`find`/`grep` through Bash (Claude Code v2.1.330 exposes no Glob/Grep tools), and inspect files with Read. Write no code during Explore. Plan in Plan mode and save the approved plan to `docs/plans/<feature>.md`. Implement in small steps with tests alongside. Use at least three focused commits (`feat(tools): ...`, `feat(loop): ...`, `feat(cli): ...`).
 
 ## Do's
 
