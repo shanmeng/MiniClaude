@@ -1,0 +1,106 @@
+"""AgentLoop: the ReAct loop that alternates model calls and tool execution (F1)."""
+
+from __future__ import annotations
+
+from collections.abc import Callable
+from dataclasses import dataclass
+from typing import Literal
+
+from miniclaude.events import AssistantText, Event, ToolCallFinished, ToolCallStarted
+from miniclaude.llm.provider import LLMProvider
+from miniclaude.llm.types import (
+    ContentBlock,
+    Message,
+    ModelResponse,
+    TextBlock,
+    ToolResultBlock,
+    ToolUseBlock,
+)
+from miniclaude.tools.base import ToolOutput
+from miniclaude.tools.registry import ToolRegistry
+
+DEFAULT_MAX_STEPS = 20
+
+
+@dataclass(frozen=True)
+class RunResult:
+    """How a run ended: final text, why it stopped, model calls made, and the transcript."""
+
+    text: str
+    stop_reason: Literal["end_turn", "max_steps"]
+    steps: int
+    messages: list[Message]
+
+
+def _ignore_event(event: Event) -> None:
+    """Default event handler: do nothing."""
+
+
+class AgentLoop:
+    """Sends the conversation to the model, runs requested tools, and repeats until done."""
+
+    def __init__(
+        self,
+        provider: LLMProvider,
+        registry: ToolRegistry,
+        *,
+        system: str,
+        max_steps: int = DEFAULT_MAX_STEPS,
+        on_event: Callable[[Event], None] = _ignore_event,
+    ) -> None:
+        if max_steps < 1:
+            raise ValueError(f"max_steps must be at least 1, got {max_steps}")
+        self._provider = provider
+        self._registry = registry
+        self._system = system
+        self._max_steps = max_steps
+        self._on_event = on_event
+
+    def run(self, goal: str) -> RunResult:
+        """Run the loop for `goal`; provider errors propagate, tool errors do not (AD6)."""
+        messages: list[Message] = [Message(role="user", content=[TextBlock(text=goal)])]
+        tools = self._registry.specs()
+        text = ""
+        for step in range(1, self._max_steps + 1):
+            response = self._provider.complete(system=self._system, messages=messages, tools=tools)
+            assistant_content: list[ContentBlock] = list(response.content)
+            messages.append(Message(role="assistant", content=assistant_content))
+            text = self._report_text(response)
+
+            tool_uses = [block for block in response.content if isinstance(block, ToolUseBlock)]
+            if not tool_uses:
+                return RunResult(text=text, stop_reason="end_turn", steps=step, messages=messages)
+
+            # All results from one assistant turn go back in a single user message (AC3).
+            results: list[ContentBlock] = [self._execute(tool_use) for tool_use in tool_uses]
+            messages.append(Message(role="user", content=results))
+
+        return RunResult(
+            text=text, stop_reason="max_steps", steps=self._max_steps, messages=messages
+        )
+
+    def _report_text(self, response: ModelResponse) -> str:
+        texts = [block.text for block in response.content if isinstance(block, TextBlock)]
+        for text in texts:
+            if text.strip():
+                self._on_event(AssistantText(text=text))
+        return "\n".join(texts)
+
+    def _execute(self, tool_use: ToolUseBlock) -> ToolResultBlock:
+        self._on_event(
+            ToolCallStarted(tool_use_id=tool_use.id, name=tool_use.name, input=tool_use.input)
+        )
+        output = self._run_tool(tool_use)
+        self._on_event(ToolCallFinished(tool_use_id=tool_use.id, name=tool_use.name, output=output))
+        return ToolResultBlock(
+            tool_use_id=tool_use.id, content=output.content, is_error=output.is_error
+        )
+
+    def _run_tool(self, tool_use: ToolUseBlock) -> ToolOutput:
+        tool = self._registry.get(tool_use.name)
+        if tool is None:
+            return ToolOutput(content=f"Unknown tool: {tool_use.name}", is_error=True)
+        try:
+            return tool.run(tool_use.input)
+        except Exception as exc:  # AD6: a buggy tool becomes an error result the model can see.
+            return ToolOutput(content=f"{type(exc).__name__}: {exc}", is_error=True)
