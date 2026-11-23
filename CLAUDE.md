@@ -92,7 +92,6 @@ Flow: `cli.py` → `AgentLoop` (`loop.py`) → `LLMProvider` / `ToolRegistry` / 
 - Don't add dependencies (`uv add`) without asking first.
 - Don't add asyncio, threads, a daemon or a TUI. These are out of scope (PRD §3).
 - Don't use `shell=True` anywhere except inside the `bash` tool, which must always set a timeout.
-- Don't copy code from KamaClaude (MIT). Its design informed this project, but all code is written from scratch. Keep the acknowledgment in `README.md`.
 
 ## Context management
 
