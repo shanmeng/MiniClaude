@@ -11,7 +11,7 @@ Requirements, acceptance criteria and architecture decisions are imported below.
 @docs/PRD.md
 @docs/architecture.md
 
-**Current state:** only the scaffold exists (`src/miniclaude/cli.py` with `--version`). Everything else in the architecture doc is planned. When a planned module lands, update this line.
+**Current state:** F1 has landed: `cli.py` (`miniclaude run`), `loop.py`, `events.py`, `prompt.py`, `llm/` (types, `AnthropicProvider`, `FakeProvider`) and `tools/` (registry, workspace confinement, the four built-in tools). See `docs/plans/f1-agent-loop.md`, including its "Deviations from the plan" section. Not yet built: `permissions/` (F2). When a planned module lands, update this line.
 
 ## Tech stack
 

@@ -11,7 +11,10 @@ uv sync
 cp .env.example .env      # add your ANTHROPIC_API_KEY
 uv run pytest             # offline test suite
 uv run miniclaude --version
+uv run miniclaude run "add a --verbose flag to cli.py" --workspace path/to/repo
 ```
+
+`miniclaude run` prints the model's text, a `→` line for each tool call and a `✓`/`✗` line for its result. It exits with 0 when the model finishes, and with 1 if it stops early (step limit, refusal, output token limit or API error). The model defaults to `claude-sonnet-5-5`; set `MINICLAUDE_MODEL` in `.env` to change it. Until the F2 permission policy lands, tools run without asking, so point `--workspace` at a repo you don't mind it editing.
 
 ## Docs
 
