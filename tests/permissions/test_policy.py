@@ -47,3 +47,25 @@ def test_bare_tool_name_allow_rule_does_not_affect_other_tools() -> None:
     policy = PermissionPolicy(allow=["read_file"])
 
     assert policy.decide("write_file", {"path": "README.md", "content": "x"}) is Decision.ASK
+
+
+# F2-AC3
+@pytest.mark.parametrize(
+    ("rule", "command"),
+    [("bash(git status)", "git status"), ("bash(git diff:*)", "git diff --stat")],
+)
+def test_bash_command_rule_in_allow_allows_matching_command(rule: str, command: str) -> None:
+    policy = PermissionPolicy(allow=[rule])
+
+    assert policy.decide("bash", {"command": command}) is Decision.ALLOW
+
+
+# F2-AC3
+@pytest.mark.parametrize(
+    ("rule", "command"),
+    [("bash(git status)", "git status -s"), ("bash(git diff:*)", "git difftool")],
+)
+def test_bash_command_rule_in_allow_leaves_other_commands_ask(rule: str, command: str) -> None:
+    policy = PermissionPolicy(allow=[rule])
+
+    assert policy.decide("bash", {"command": command}) is Decision.ASK
