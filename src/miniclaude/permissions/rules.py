@@ -10,8 +10,16 @@ from typing import Any
 
 _PREFIX_SUFFIX = ":*"
 _PATH_TOOLS = frozenset({"read_file", "write_file", "list_dir"})
+# Only these tools take a specifier; anything else in parentheses is a typo to report.
+_SPECIFIER_TOOLS = _PATH_TOOLS | {"bash"}
 # list_dir's `path` input is optional and defaults to the workspace root.
 _DEFAULT_PATH = "."
+# A snake_case tool name, optionally followed by a non-empty "(specifier)".
+_RULE_SYNTAX = re.compile(r"([a-z_][a-z0-9_]*)(?:\((.+)\))?")
+
+
+class InvalidRuleError(ValueError):
+    """Raised when a permission rule string cannot be parsed."""
 
 
 @dataclass(frozen=True)
@@ -35,18 +43,24 @@ class Rule:
             return True
         if self.tool == "bash":
             return _matches_command(self.specifier, tool_input.get("command"))
-        if self.tool in _PATH_TOOLS:
-            path = tool_input.get("path", _DEFAULT_PATH)
-            return _matches_path(self.specifier, path, workspace_root)
-        return False
+        # parse_rule() only accepts a specifier on bash and the path tools.
+        path = tool_input.get("path", _DEFAULT_PATH)
+        return _matches_path(self.specifier, path, workspace_root)
 
 
 def parse_rule(text: str) -> Rule:
-    """Parse a rule string such as "read_file" or "bash(git diff:*)"."""
-    tool, paren, rest = text.partition("(")
-    if not paren:
-        return Rule(tool=tool)
-    return Rule(tool=tool, specifier=rest.removesuffix(")"))
+    """Parse a rule string such as "read_file" or "bash(git diff:*)"; raise InvalidRuleError."""
+    match = _RULE_SYNTAX.fullmatch(text)
+    if match is None:
+        raise InvalidRuleError(
+            f"Invalid permission rule {text!r}: expected 'tool_name' or 'tool_name(specifier)'"
+        )
+    tool, specifier = match.group(1), match.group(2)
+    if specifier is not None and tool not in _SPECIFIER_TOOLS:
+        raise InvalidRuleError(
+            f"Invalid permission rule {text!r}: {tool!r} does not take a specifier"
+        )
+    return Rule(tool=tool, specifier=specifier)
 
 
 def normalize_path(path: str, workspace_root: PurePath | None = None) -> str:

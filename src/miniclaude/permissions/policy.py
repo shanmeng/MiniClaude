@@ -5,8 +5,10 @@ from __future__ import annotations
 import enum
 import re
 from collections.abc import Mapping, Sequence
-from pathlib import PurePath
+from pathlib import Path, PurePath
 from typing import Any
+
+from pydantic import BaseModel, ConfigDict, ValidationError
 
 from miniclaude.permissions.rules import Rule, parse_rule
 
@@ -22,6 +24,22 @@ class Decision(enum.Enum):
     ALLOW = "allow"
     DENY = "deny"
     ASK = "ask"
+
+
+class _PermissionsConfig(BaseModel):
+    """The "permissions" object of a settings file; unknown keys are typos, so reject them."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    allow: list[str] = []
+    deny: list[str] = []
+    ask: list[str] = []
+
+
+class _SettingsFile(BaseModel):
+    """A settings file shaped {"permissions": {"allow": [], "deny": [], "ask": []}}."""
+
+    permissions: _PermissionsConfig
 
 
 class PermissionPolicy:
@@ -42,6 +60,21 @@ class PermissionPolicy:
             (Decision.ALLOW, tuple(parse_rule(text) for text in allow)),
         )
         self._workspace_root = workspace_root
+
+    @classmethod
+    def from_file(cls, path: Path, *, workspace_root: PurePath | None = None) -> PermissionPolicy:
+        """Load a policy from a JSON settings file; raise ValueError naming the file if invalid."""
+        try:
+            settings = _SettingsFile.model_validate_json(path.read_text(encoding="utf-8"))
+        except ValidationError as exc:  # also covers malformed JSON
+            raise ValueError(f"Invalid permission settings in {path}: {exc}") from exc
+        permissions = settings.permissions
+        return cls(
+            allow=permissions.allow,
+            deny=permissions.deny,
+            ask=permissions.ask,
+            workspace_root=workspace_root,
+        )
 
     def decide(self, tool_name: str, tool_input: Mapping[str, Any]) -> Decision:
         """Return the decision for calling `tool_name` with `tool_input`."""
