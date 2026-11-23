@@ -40,4 +40,3 @@ Rules from the architecture decisions:
 - The agent loop and tools (PRD F1) follow Explore → Plan → Implement → Commit. Plans go in `docs/plans/`. HW4 reflection and session logs go in `docs/hw4/`.
 - Show the diff and proposed commit message and wait for approval before every commit. Never push (`git push` is denied in `.claude/settings.json`).
 - `.env` holds `ANTHROPIC_API_KEY` and `MINICLAUDE_MODEL`. Claude Code is denied access to it, so use `.env.example` for reference.
-- All code is written from scratch. The design was informed by KamaClaude (MIT), so don't copy code from it. Keep the acknowledgment in the README.
