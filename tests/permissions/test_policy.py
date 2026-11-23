@@ -213,3 +213,20 @@ def test_substitution_or_redirection_is_still_denied_by_a_matching_deny_rule(com
     policy = PermissionPolicy(allow=GIT_READ_RULES, deny=["bash(git diff:*)"])
 
     assert policy.decide("bash", {"command": command}) is Decision.DENY
+
+
+# F2-AC6: an empty or separator-only command has no parts, and "every part allowed" must not
+# be vacuously true for it.
+@pytest.mark.parametrize("command", ["", " ", ";", "&& ||"], ids=["empty", "blank", "semi", "ops"])
+@pytest.mark.parametrize("allow", [[], ["bash"]], ids=["no-rules", "bare-bash"])
+def test_command_with_no_parts_is_never_allowed(command: str, allow: list[str]) -> None:
+    policy = PermissionPolicy(allow=allow)
+
+    assert policy.decide("bash", {"command": command}) is not Decision.ALLOW
+
+
+# F2-AC6 guard: a bare bash allow rule still does not allow substitution or redirection.
+def test_bare_bash_allow_rule_still_asks_for_redirection() -> None:
+    policy = PermissionPolicy(allow=["bash"])
+
+    assert policy.decide("bash", {"command": "echo x > f"}) is Decision.ASK
