@@ -100,3 +100,48 @@ def test_absolute_path_outside_workspace_is_not_relativized(path: str) -> None:
     policy = PermissionPolicy(allow=["read_file(**)"], workspace_root=WORKSPACE)
 
     assert policy.decide("read_file", {"path": path}) is Decision.ASK
+
+
+# F2-AC5
+def test_deny_rule_denies_a_matching_call() -> None:
+    policy = PermissionPolicy(deny=["write_file"])
+
+    assert policy.decide("write_file", {"path": "a.txt", "content": "x"}) is Decision.DENY
+
+
+# F2-AC5
+def test_deny_rule_beats_allow_rule() -> None:
+    policy = PermissionPolicy(allow=["read_file"], deny=["read_file(.env)"])
+
+    assert policy.decide("read_file", {"path": ".env"}) is Decision.DENY
+
+
+# F2-AC5
+def test_narrow_deny_rule_leaves_other_allowed_calls_allowed() -> None:
+    policy = PermissionPolicy(allow=["read_file"], deny=["read_file(.env)"])
+
+    assert policy.decide("read_file", {"path": "README.md"}) is Decision.ALLOW
+
+
+# F2-AC5
+def test_ask_rule_beats_allow_rule() -> None:
+    policy = PermissionPolicy(allow=["bash(git:*)"], ask=["bash(git push:*)"])
+
+    assert policy.decide("bash", {"command": "git push origin main"}) is Decision.ASK
+
+
+# F2-AC5
+def test_deny_rule_beats_ask_rule() -> None:
+    policy = PermissionPolicy(ask=["read_file"], deny=["read_file(.env)"])
+
+    assert policy.decide("read_file", {"path": ".env"}) is Decision.DENY
+
+
+# F2-AC5 with the AC4 workspace root: an absolute path cannot slip past a relative deny rule.
+@pytest.mark.parametrize("path", ["/abs/workspace/.env", "/abs/workspace/src/../.env"])
+def test_relative_deny_rule_catches_absolute_path_inside_workspace(path: str) -> None:
+    policy = PermissionPolicy(
+        allow=["read_file"], deny=["read_file(.env)"], workspace_root=WORKSPACE
+    )
+
+    assert policy.decide("read_file", {"path": path}) is Decision.DENY
