@@ -19,6 +19,7 @@ from miniclaude.llm.types import (
     ToolSpec,
 )
 from miniclaude.loop import AgentLoop, RunResult
+from miniclaude.permissions.policy import PermissionPolicy
 from miniclaude.tools.base import Tool, ToolOutput
 from miniclaude.tools.builtin.read_file import ReadFileTool
 from miniclaude.tools.registry import ToolRegistry
@@ -312,3 +313,103 @@ def test_opaque_blocks_stay_in_history_unchanged() -> None:
     first = ModelResponse(content=[thinking, tool_use("tu_1", "echo")], stop_reason="tool_use")
     _, provider = _run([first, text_response("ok")], [_RecordingTool("echo", [])])
     assert provider.calls[1].messages[1].content[0] == thinking
+
+
+# --- F2-AC8: permission gating -------------------------------------------------
+
+
+class _RecordingApprover:
+    """An approver that records what it was asked and gives a fixed answer."""
+
+    def __init__(self, answer: bool) -> None:
+        self.answer = answer
+        self.calls: list[tuple[str, dict[str, Any]]] = []
+
+    def __call__(self, tool_name: str, tool_input: Mapping[str, Any]) -> bool:
+        self.calls.append((tool_name, dict(tool_input)))
+        return self.answer
+
+
+def _run_gated(
+    policy: PermissionPolicy, approver: _RecordingApprover | None = None
+) -> tuple[list[tuple[str, dict[str, Any]]], ToolResultBlock, RunResult]:
+    """Run one echo call under `policy`; return what the tool ran, its result, and the run."""
+    log: list[tuple[str, dict[str, Any]]] = []
+    provider = FakeProvider(
+        [tool_response(tool_use("tu_1", "echo", {"x": 1})), text_response("ok")]
+    )
+    loop = AgentLoop(
+        provider,
+        ToolRegistry([_RecordingTool("echo", log)]),
+        system="SYS",
+        policy=policy,
+        approver=approver,
+    )
+    result = loop.run("the goal")
+    [tool_result] = _results_sent_in_call(provider, 1)
+    return log, tool_result, result
+
+
+def test_denied_call_does_not_run_the_tool() -> None:  # F2-AC8
+    log, _, _ = _run_gated(PermissionPolicy(deny=["echo"]), _RecordingApprover(True))
+    assert log == []
+
+
+def test_denied_call_becomes_error_result_with_matching_id() -> None:  # F2-AC8
+    _, tool_result, _ = _run_gated(PermissionPolicy(deny=["echo"]), _RecordingApprover(True))
+    assert (tool_result.tool_use_id, tool_result.is_error) == ("tu_1", True)
+
+
+def test_denied_call_does_not_consult_the_approver() -> None:  # F2-AC8
+    approver = _RecordingApprover(True)
+    _run_gated(PermissionPolicy(deny=["echo"]), approver)
+    assert approver.calls == []
+
+
+def test_loop_continues_after_a_denial() -> None:  # F2-AC8 (AD6)
+    _, _, result = _run_gated(PermissionPolicy(deny=["echo"]), _RecordingApprover(True))
+    assert (result.text, result.stop_reason) == ("ok", "end_turn")
+
+
+def test_ask_passes_tool_name_and_input_to_the_approver() -> None:  # F2-AC8
+    approver = _RecordingApprover(True)
+    _run_gated(PermissionPolicy(), approver)
+    assert approver.calls == [("echo", {"x": 1})]
+
+
+def test_approved_ask_runs_the_tool() -> None:  # F2-AC8
+    log, tool_result, _ = _run_gated(PermissionPolicy(), _RecordingApprover(True))
+    assert (log, tool_result.content, tool_result.is_error) == (
+        [("echo", {"x": 1})],
+        "echo ok",
+        False,
+    )
+
+
+def test_declined_ask_does_not_run_the_tool() -> None:  # F2-AC8
+    log, _, _ = _run_gated(PermissionPolicy(), _RecordingApprover(False))
+    assert log == []
+
+
+def test_declined_ask_becomes_error_result() -> None:  # F2-AC8
+    _, tool_result, _ = _run_gated(PermissionPolicy(), _RecordingApprover(False))
+    assert (tool_result.tool_use_id, tool_result.is_error) == ("tu_1", True)
+
+
+def test_allowed_call_runs_without_consulting_the_approver() -> None:  # F2-AC8
+    approver = _RecordingApprover(False)
+    log, _, _ = _run_gated(PermissionPolicy(allow=["echo"]), approver)
+    assert (log, approver.calls) == ([("echo", {"x": 1})], [])
+
+
+def test_ask_without_an_approver_is_treated_as_declined() -> None:  # F2-AC8
+    log, tool_result, _ = _run_gated(PermissionPolicy(), approver=None)
+    assert (log, tool_result.is_error) == ([], True)
+
+
+def test_policy_denial_and_user_decline_have_different_texts() -> None:  # F2-AC8
+    _, denied, _ = _run_gated(PermissionPolicy(deny=["echo"]), _RecordingApprover(True))
+    _, declined, _ = _run_gated(PermissionPolicy(), _RecordingApprover(False))
+    assert "policy" in denied.content.lower()
+    assert "user" in declined.content.lower()
+    assert denied.content != declined.content

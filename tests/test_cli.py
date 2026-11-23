@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import io
+import json
 from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
@@ -19,10 +20,11 @@ from miniclaude.cli import (
     format_event,
     main,
     run_command,
+    terminal_approver,
 )
 from miniclaude.events import AssistantText, ToolCallFinished, ToolCallStarted
 from miniclaude.llm.fake import FakeProvider, text_response, tool_response, tool_use
-from miniclaude.llm.types import Message, ModelResponse, TextBlock, ToolSpec
+from miniclaude.llm.types import Message, ModelResponse, TextBlock, ToolResultBlock, ToolSpec
 from miniclaude.loop import RunResult
 from miniclaude.tools.base import ToolOutput
 
@@ -275,3 +277,136 @@ def test_format_event_tool_error_shows_last_line() -> None:  # F1-AC8
     output = ToolOutput(content="some output\n[exit code: 1]", is_error=True)
     event = ToolCallFinished(tool_use_id="tu_1", name="bash", output=output)
     assert format_event(event) == "✗ bash: [exit code: 1]"
+
+
+# --- F2-AC8: approval prompt and permission wiring -----------------------------
+
+
+@pytest.mark.parametrize("answer", ["y\n", "yes\n", "Y\n", "  yes  \n"])
+def test_terminal_approver_approves_on_yes(answer: str) -> None:  # F2-AC8
+    approver = terminal_approver(io.StringIO(answer), io.StringIO())
+    assert approver("bash", {"command": "ls"}) is True
+
+
+@pytest.mark.parametrize(
+    "answer", ["n\n", "no\n", "\n", "maybe\n", ""], ids=["n", "no", "blank", "other", "eof"]
+)
+def test_terminal_approver_declines_on_anything_else(answer: str) -> None:  # F2-AC8
+    approver = terminal_approver(io.StringIO(answer), io.StringIO())
+    assert approver("bash", {"command": "ls"}) is False
+
+
+def test_terminal_approver_prompt_shows_tool_name_and_input() -> None:  # F2-AC8
+    out = io.StringIO()
+    terminal_approver(io.StringIO("n\n"), out)("write_file", {"path": "src/app.py"})
+    assert "write_file" in out.getvalue()
+    assert '"path": "src/app.py"' in out.getvalue()
+
+
+class _ScriptedProviderSpy:
+    """Stands in for AnthropicProvider: replays `script` and keeps the FakeProvider to inspect."""
+
+    script: list[ModelResponse] = []
+    instances: list[FakeProvider] = []
+
+    def __init__(self, client: anthropic.Anthropic, model: str) -> None:
+        self._fake = FakeProvider(list(_ScriptedProviderSpy.script))
+        _ScriptedProviderSpy.instances.append(self._fake)
+
+    def complete(
+        self, *, system: str, messages: list[Message], tools: list[ToolSpec]
+    ) -> ModelResponse:
+        return self._fake.complete(system=system, messages=messages, tools=tools)
+
+
+@pytest.fixture
+def scripted_provider(
+    clean_env: Path, monkeypatch: pytest.MonkeyPatch
+) -> type[_ScriptedProviderSpy]:
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
+    _ScriptedProviderSpy.script = []
+    _ScriptedProviderSpy.instances = []
+    monkeypatch.setattr(cli, "AnthropicProvider", _ScriptedProviderSpy)
+    return _ScriptedProviderSpy
+
+
+def _write_settings(workspace: Path, text: str) -> Path:
+    path = workspace / ".miniclaude" / "settings.json"
+    path.parent.mkdir()
+    path.write_text(text, encoding="utf-8")
+    return path
+
+
+def _sent_tool_result(spy: type[_ScriptedProviderSpy]) -> ToolResultBlock:
+    [provider] = spy.instances
+    [block] = provider.calls[1].messages[-1].content
+    assert isinstance(block, ToolResultBlock)
+    return block
+
+
+def test_run_without_settings_asks_before_writing(
+    clean_env: Path, monkeypatch: pytest.MonkeyPatch, scripted_provider: type[_ScriptedProviderSpy]
+) -> None:  # F2-AC8: no settings file means an empty policy, so every call is ASK
+    scripted_provider.script = [
+        tool_response(tool_use("tu_1", "write_file", {"path": "new.txt", "content": "x"})),
+        text_response("Done."),
+    ]
+    monkeypatch.setattr("sys.stdin", io.StringIO("n\n"))
+    main(["run", "goal", "--workspace", str(clean_env)])
+    assert not (clean_env / "new.txt").exists()
+
+
+def test_run_loads_allow_rules_from_workspace_settings(
+    clean_env: Path, monkeypatch: pytest.MonkeyPatch, scripted_provider: type[_ScriptedProviderSpy]
+) -> None:  # F2-AC8
+    _write_settings(clean_env, json.dumps({"permissions": {"allow": ["write_file(*.txt)"]}}))
+    scripted_provider.script = [
+        tool_response(tool_use("tu_1", "write_file", {"path": "new.txt", "content": "x"})),
+        text_response("Done."),
+    ]
+    monkeypatch.setattr("sys.stdin", io.StringIO(""))  # any prompt would be declined
+    main(["run", "goal", "--workspace", str(clean_env)])
+    assert (clean_env / "new.txt").read_text(encoding="utf-8") == "x"
+
+
+def test_run_denies_absolute_path_to_env_inside_workspace(
+    clean_env: Path, scripted_provider: type[_ScriptedProviderSpy]
+) -> None:  # F2-AC8 + AC4: main passes the resolved workspace as workspace_root
+    (clean_env / ".env").write_text("SECRET=hunter2\n", encoding="utf-8")
+    _write_settings(
+        clean_env,
+        json.dumps({"permissions": {"allow": ["read_file"], "deny": ["read_file(.env)"]}}),
+    )
+    absolute_env = str(clean_env.resolve() / ".env")
+    scripted_provider.script = [
+        tool_response(tool_use("tu_1", "read_file", {"path": absolute_env})),
+        text_response("Done."),
+    ]
+    main(["run", "goal", "--workspace", "."])  # relative on purpose: main must resolve it
+    tool_result = _sent_tool_result(scripted_provider)
+    assert tool_result.is_error
+    assert "hunter2" not in tool_result.content
+
+
+@pytest.mark.parametrize(
+    ("settings", "expected"),
+    [
+        ('{"permissions": {"allow": ["read_file"],}}', "settings.json"),
+        ('{"permissions": {"deny": ["readfile(.env)"]}}', "readfile(.env)"),
+    ],
+    ids=["invalid-json", "malformed-rule"],
+)
+def test_run_with_bad_settings_exits_2_before_any_api_call(
+    clean_env: Path,
+    scripted_provider: type[_ScriptedProviderSpy],
+    capsys: pytest.CaptureFixture[str],
+    settings: str,
+    expected: str,
+) -> None:  # F2-AC8 + AC7: config errors fail fast at startup
+    _write_settings(clean_env, settings)
+    scripted_provider.script = [text_response("Done.")]
+    code = main(["run", "goal", "--workspace", str(clean_env)])
+    err = capsys.readouterr().err
+    assert (code, scripted_provider.instances) == (2, [])
+    assert err.startswith("error: ")
+    assert expected in err
