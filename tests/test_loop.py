@@ -413,3 +413,30 @@ def test_policy_denial_and_user_decline_have_different_texts() -> None:  # F2-AC
     assert "policy" in denied.content.lower()
     assert "user" in declined.content.lower()
     assert denied.content != declined.content
+
+
+@pytest.mark.parametrize(
+    ("policy", "approver"),
+    [
+        (PermissionPolicy(deny=["echo"]), _RecordingApprover(True)),
+        (PermissionPolicy(), _RecordingApprover(False)),
+    ],
+    ids=["denied", "declined"],
+)
+def test_refused_call_emits_tool_call_finished_with_an_error(
+    policy: PermissionPolicy, approver: _RecordingApprover
+) -> None:  # F2-AC8: the CLI prints a ✗ line from this event
+    events: list[Event] = []
+    loop = AgentLoop(
+        FakeProvider([tool_response(tool_use("tu_1", "echo")), text_response("ok")]),
+        ToolRegistry([_RecordingTool("echo", [])]),
+        system="SYS",
+        on_event=events.append,
+        policy=policy,
+        approver=approver,
+    )
+    loop.run("the goal")
+    finished = [event for event in events if isinstance(event, ToolCallFinished)]
+    assert [(e.tool_use_id, e.name, e.output.is_error) for e in finished] == [
+        ("tu_1", "echo", True)
+    ]
