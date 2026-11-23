@@ -56,3 +56,6 @@ AC1 → AC8. See PRD §F2 and AD4/AD5.
 - Command splitting ignores shell syntax, so `make test 2>&1` is split on `&` and its `>` counts as
   redirection: it always needs approval, even under `bash(make test:*)`. This over-splitting is
   fail-safe (an extra `ASK`, never a wrongful `ALLOW`).
+- Rules match the path as written, with no `resolve()` (AD4). A symlink inside the workspace that
+  points at a denied file, such as `link -> .env`, is checked as `link`. Workspace confinement
+  (AD7) resolves symlinks, so links that leave the workspace are still refused.
