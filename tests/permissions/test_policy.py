@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Any
 
 import pytest
@@ -69,3 +70,33 @@ def test_bash_command_rule_in_allow_leaves_other_commands_ask(rule: str, command
     policy = PermissionPolicy(allow=[rule])
 
     assert policy.decide("bash", {"command": command}) is Decision.ASK
+
+
+WORKSPACE = Path("/abs/workspace")
+
+
+# F2-AC4
+@pytest.mark.parametrize(
+    ("path", "expected"),
+    [("src/pkg/app.py", Decision.ALLOW), ("tests/test_app.py", Decision.ASK)],
+)
+def test_path_rule_in_allow_matches_with_glob_semantics(path: str, expected: Decision) -> None:
+    policy = PermissionPolicy(allow=["write_file(src/**)"])
+
+    assert policy.decide("write_file", {"path": path, "content": "x"}) is expected
+
+
+# F2-AC4
+@pytest.mark.parametrize("path", ["/abs/workspace/.env", "/abs/workspace/src/../.env"])
+def test_absolute_path_inside_workspace_is_matched_relative_to_the_root(path: str) -> None:
+    policy = PermissionPolicy(allow=["read_file(.env)"], workspace_root=WORKSPACE)
+
+    assert policy.decide("read_file", {"path": path}) is Decision.ALLOW
+
+
+# F2-AC4
+@pytest.mark.parametrize("path", ["/elsewhere/.env", "/abs/workspace-other/.env"])
+def test_absolute_path_outside_workspace_is_not_relativized(path: str) -> None:
+    policy = PermissionPolicy(allow=["read_file(**)"], workspace_root=WORKSPACE)
+
+    assert policy.decide("read_file", {"path": path}) is Decision.ASK
