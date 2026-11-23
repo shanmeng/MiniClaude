@@ -52,6 +52,9 @@ class PermissionPolicy:
 
     def _decide_command(self, command: str) -> Decision:
         parts = [part.strip() for part in _COMMAND_SEPARATORS.split(command) if part.strip()]
+        if not parts:
+            # Otherwise "every part is allowed" would be vacuously true.
+            return Decision.ASK
         decisions = [self._decide_command_part(part) for part in parts]
         if Decision.DENY in decisions:
             return Decision.DENY

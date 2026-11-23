@@ -58,6 +58,7 @@ Acceptance criteria:
 
 1. With no rules, every call is `ASK`.
 2. A bare tool-name rule in `allow` makes every call to that tool `ALLOW`.
+   For `bash`, this is true except for sub-commands with `$(`, backticks, `>` or `<` (see AC6).
 3. `bash(<cmd>)` matches the exact command only. `bash(<prefix>:*)` matches by prefix on a word boundary: `git diff:*` matches `git diff --stat` but not `git difftool`.
 4. Path rules (`read_file(...)`, `write_file(...)`, `list_dir(...)`) match the `path` input with glob semantics, where `**` crosses directories. Paths are normalized first, so `src/../.env` is checked as `.env`.
 5. `deny` beats `allow` when both match. `ask` beats `allow`.

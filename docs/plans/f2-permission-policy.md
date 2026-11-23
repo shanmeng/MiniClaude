@@ -37,7 +37,9 @@ AC1 → AC8. See PRD §F2 and AD4/AD5.
    fail-safe: the worst case is an extra `ASK`. A sub-command containing `$(`, a backtick, `>` or
    `<` can never be `ALLOW`ed by a bash rule, because a prefix rule like `git diff:*` would
    otherwise approve `git diff $(rm -rf src)` or `git diff > src/app.py`. Such a sub-command is
-   `ASK` unless a deny rule matches, in which case it is `DENY`.
+   `ASK` unless a deny rule matches, in which case it is `DENY`. This includes a bare `bash` allow
+   rule: `allow: ["bash"]` still gives `ASK` for `echo x > f`. A command with no parts after
+   splitting (`""`, `";"`) is `ASK`, so "every part is allowed" is never vacuously true.
 3. **Own glob-to-regex for path rules (AC4).** `PurePath.full_match()` (where `**` crosses
    directories) exists only from Python 3.13, and the project supports 3.12. A small converter
    maps `**` to "any characters including `/`", `*` to "any characters except `/`" and `?` to
@@ -51,3 +53,6 @@ AC1 → AC8. See PRD §F2 and AD4/AD5.
 
 - Path matching is case-sensitive, but macOS file systems usually are not, so `.ENV` does not match
   a `read_file(.env)` rule. This is acceptable because the policy is not a sandbox (PRD §3).
+- Command splitting ignores shell syntax, so `make test 2>&1` is split on `&` and its `>` counts as
+  redirection: it always needs approval, even under `bash(make test:*)`. This over-splitting is
+  fail-safe (an extra `ASK`, never a wrongful `ALLOW`).
