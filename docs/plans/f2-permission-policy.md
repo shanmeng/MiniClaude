@@ -46,3 +46,8 @@ AC1 → AC8. See PRD §F2 and AD4/AD5.
    `None` the loop is ungated, which keeps the F1 tests unchanged. The CLI always passes a policy:
    one loaded from `<workspace>/.miniclaude/settings.json` if that file exists, otherwise an empty
    policy, under which every call is `ASK`.
+
+## Known limitations
+
+- Path matching is case-sensitive, but macOS file systems usually are not, so `.ENV` does not match
+  a `read_file(.env)` rule. This is acceptable because the policy is not a sandbox (PRD §3).
