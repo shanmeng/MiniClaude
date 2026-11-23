@@ -26,6 +26,12 @@ class Decision(enum.Enum):
     ASK = "ask"
 
 
+def split_command(command: str) -> list[str]:
+    """Split a bash command on &&, ||, ;, &, | and newlines into its non-empty, stripped parts."""
+    stripped = (part.strip() for part in _COMMAND_SEPARATORS.split(command))
+    return [part for part in stripped if part]
+
+
 class _PermissionsConfig(BaseModel):
     """The "permissions" object of a settings file; unknown keys are typos, so reject them."""
 
@@ -84,7 +90,7 @@ class PermissionPolicy:
         return self._decide_by_rules(tool_name, tool_input)
 
     def _decide_command(self, command: str) -> Decision:
-        parts = [part.strip() for part in _COMMAND_SEPARATORS.split(command) if part.strip()]
+        parts = split_command(command)
         if not parts:
             # Otherwise "every part is allowed" would be vacuously true.
             return Decision.ASK
