@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import re
 from collections.abc import Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import PurePath, PurePosixPath
 from typing import Any
 
@@ -28,6 +28,15 @@ class Rule:
 
     tool: str
     specifier: str | None = None
+    # Compiled once per rule from a path specifier; None for bare and bash rules.
+    path_regex: re.Pattern[str] | None = field(init=False, repr=False, compare=False)
+
+    def __post_init__(self) -> None:
+        regex = None
+        if self.specifier is not None and self.tool in _PATH_TOOLS:
+            regex = glob_to_regex(self.specifier)
+        # The dataclass is frozen, so set the derived field the way dataclasses do.
+        object.__setattr__(self, "path_regex", regex)
 
     def matches(
         self,
@@ -44,8 +53,9 @@ class Rule:
         if self.tool == "bash":
             return _matches_command(self.specifier, tool_input.get("command"))
         # parse_rule() only accepts a specifier on bash and the path tools.
+        assert self.path_regex is not None
         path = tool_input.get("path", _DEFAULT_PATH)
-        return _matches_path(self.specifier, path, workspace_root)
+        return _matches_path(self.specifier, self.path_regex, path, workspace_root)
 
 
 def parse_rule(text: str) -> Rule:
@@ -112,7 +122,9 @@ def _matches_command(specifier: str, command: object) -> bool:
     return command == specifier
 
 
-def _matches_path(pattern: str, path: object, workspace_root: PurePath | None) -> bool:
+def _matches_path(
+    pattern: str, regex: re.Pattern[str], path: object, workspace_root: PurePath | None
+) -> bool:
     if not isinstance(path, str):
         return False
     normalized = normalize_path(path, workspace_root)
@@ -121,4 +133,4 @@ def _matches_path(pattern: str, path: object, workspace_root: PurePath | None) -
     # A relative pattern such as "**" covers only paths inside the workspace.
     if outside_workspace and not PurePosixPath(pattern).is_absolute():
         return False
-    return glob_to_regex(pattern).fullmatch(normalized) is not None
+    return regex.fullmatch(normalized) is not None
