@@ -7,7 +7,14 @@ from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
 from typing import Any
 
-from miniclaude.llm.types import Message, ModelResponse, TextBlock, ToolSpec, ToolUseBlock
+from miniclaude.llm.types import (
+    Message,
+    ModelResponse,
+    ResponseBlock,
+    TextBlock,
+    ToolSpec,
+    ToolUseBlock,
+)
 
 
 class ScriptExhaustedError(RuntimeError):
@@ -61,6 +68,6 @@ def tool_use(tool_use_id: str, name: str, tool_input: dict[str, Any] | None = No
 
 def tool_response(*tool_uses: ToolUseBlock, text: str | None = None) -> ModelResponse:
     """A scripted tool-calling turn: optional leading text, then the tool_use blocks."""
-    content: list[TextBlock | ToolUseBlock] = [TextBlock(text=text)] if text else []
+    content: list[ResponseBlock] = [TextBlock(text=text)] if text else []
     content.extend(tool_uses)
     return ModelResponse(content=content, stop_reason="tool_use")

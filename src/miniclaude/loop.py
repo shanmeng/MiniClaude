@@ -21,13 +21,19 @@ from miniclaude.tools.registry import ToolRegistry
 
 DEFAULT_MAX_STEPS = 20
 
+StopReason = Literal["end_turn", "max_steps", "refusal", "max_tokens"]
+
+# Model stop reasons that end the run even if the reply contains tool_use blocks: a refusal
+# has nothing to act on, and a max_tokens cut-off can leave a truncated tool_use input.
+_TERMINAL_MODEL_STOPS: dict[str, StopReason] = {"refusal": "refusal", "max_tokens": "max_tokens"}
+
 
 @dataclass(frozen=True)
 class RunResult:
     """How a run ended: final text, why it stopped, model calls made, and the transcript."""
 
     text: str
-    stop_reason: Literal["end_turn", "max_steps"]
+    stop_reason: StopReason
     steps: int
     messages: list[Message]
 
@@ -66,6 +72,10 @@ class AgentLoop:
             assistant_content: list[ContentBlock] = list(response.content)
             messages.append(Message(role="assistant", content=assistant_content))
             text = self._report_text(response)
+
+            terminal = _TERMINAL_MODEL_STOPS.get(response.stop_reason)
+            if terminal is not None:
+                return RunResult(text=text, stop_reason=terminal, steps=step, messages=messages)
 
             tool_uses = [block for block in response.content if isinstance(block, ToolUseBlock)]
             if not tool_uses:

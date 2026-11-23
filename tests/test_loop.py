@@ -10,7 +10,14 @@ import pytest
 
 from miniclaude.events import AssistantText, Event, ToolCallFinished, ToolCallStarted
 from miniclaude.llm.fake import FakeProvider, text_response, tool_response, tool_use
-from miniclaude.llm.types import Message, ModelResponse, TextBlock, ToolResultBlock, ToolSpec
+from miniclaude.llm.types import (
+    Message,
+    ModelResponse,
+    OpaqueBlock,
+    TextBlock,
+    ToolResultBlock,
+    ToolSpec,
+)
 from miniclaude.loop import AgentLoop, RunResult
 from miniclaude.tools.base import Tool, ToolOutput
 from miniclaude.tools.builtin.read_file import ReadFileTool
@@ -272,3 +279,36 @@ def test_blank_text_is_not_reported_as_an_event() -> None:
     events: list[Event] = []
     _run([text_response("  ")], on_event=events)
     assert events == []
+
+
+# --- Model stop reasons that end the run (plan: Deviations) -------------------
+
+
+def test_refusal_ends_the_run() -> None:
+    script = [
+        ModelResponse(content=[TextBlock(text="I can't help with that.")], stop_reason="refusal")
+    ]
+    result, _ = _run(script)
+    assert (result.text, result.stop_reason, result.steps) == (
+        "I can't help with that.",
+        "refusal",
+        1,
+    )
+
+
+def test_max_tokens_ends_the_run_without_running_tools() -> None:
+    log: list[tuple[str, dict[str, Any]]] = []
+    truncated = tool_response(tool_use("tu_1", "echo", {"x": 1}), text="writing")
+    script = [truncated.model_copy(update={"stop_reason": "max_tokens"})]
+    result, provider = _run(script, [_RecordingTool("echo", log)])
+    assert (result.stop_reason, log, len(provider.calls)) == ("max_tokens", [], 1)
+
+
+# --- Opaque provider blocks (plan: Deviations) ---------------------------------
+
+
+def test_opaque_blocks_stay_in_history_unchanged() -> None:
+    thinking = OpaqueBlock(data={"type": "thinking", "thinking": "", "signature": "s"})
+    first = ModelResponse(content=[thinking, tool_use("tu_1", "echo")], stop_reason="tool_use")
+    _, provider = _run([first, text_response("ok")], [_RecordingTool("echo", [])])
+    assert provider.calls[1].messages[1].content[0] == thinking

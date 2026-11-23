@@ -32,8 +32,17 @@ class ToolResultBlock(BaseModel):
     is_error: bool = False
 
 
-ContentBlock = Annotated[TextBlock | ToolUseBlock | ToolResultBlock, Field(discriminator="type")]
-ResponseBlock = Annotated[TextBlock | ToolUseBlock, Field(discriminator="type")]
+class OpaqueBlock(BaseModel):
+    """A provider block the loop doesn't interpret (e.g. thinking), kept to send back unchanged."""
+
+    type: Literal["opaque"] = "opaque"
+    data: dict[str, Any]
+
+
+ContentBlock = Annotated[
+    TextBlock | ToolUseBlock | ToolResultBlock | OpaqueBlock, Field(discriminator="type")
+]
+ResponseBlock = Annotated[TextBlock | ToolUseBlock | OpaqueBlock, Field(discriminator="type")]
 
 
 class Message(BaseModel):
@@ -52,7 +61,7 @@ class ToolSpec(BaseModel):
 
 
 class ModelResponse(BaseModel):
-    """One model reply: text and tool_use blocks plus the provider's stop reason."""
+    """One model reply: text, tool_use and opaque blocks plus the provider's stop reason."""
 
     content: list[ResponseBlock]
     stop_reason: str

@@ -126,3 +126,20 @@ Provider conversion tests (`test_provider.py`): text/tool_use round-trip, tool_r
 
 - Permission policy / approver (F2-AC8).
 - `chat` REPL, sessions, compaction (P3).
+
+## Deviations from the plan
+
+These were found while writing the provider in commit 3. D11 says to check the locked SDK's tool-use types first, and checking them (plus the API guidance for `claude-sonnet-5-5`) turned up three problems with the plan. Each was approved before implementation.
+
+1. **Opaque blocks are preserved, not dropped.**
+   - *Plan:* `from_sdk_message()` drops every SDK block that isn't text or tool_use.
+   - *Problem:* `claude-sonnet-5-5` runs adaptive thinking by default, so replies carry `thinking` blocks. The API requires them to be sent back unchanged on the next request. Dropping them mid tool-loop can cause 400 errors, or the model loses its reasoning between steps.
+   - *Change:* `llm/types.py` gains `OpaqueBlock(type="opaque", data: dict)`, which is part of `ContentBlock` and `ResponseBlock`. `AnthropicProvider` stores any other SDK block as its raw dict (`to_dict(mode="json")`, which keeps only the fields the API returned) and sends it back unchanged. The loop ignores opaque blocks and never sees SDK objects, so AD3 still holds.
+   - *Tests:* `tests/llm/test_provider.py::test_thinking_block_becomes_opaque_with_exact_fields`, `::test_opaque_block_is_sent_back_unchanged`, `::test_thinking_round_trips_through_assistant_history`, `tests/test_loop.py::test_opaque_blocks_stay_in_history_unchanged`. The live smoke test sends a real thinking block back.
+2. **`max_tokens` is 16000, not 4096 (revises D10).**
+   - *Problem:* thinking tokens count toward `max_tokens`. With 4096, a turn that thinks hard could be cut off mid tool_use.
+   - *Change:* 16000 follows the API guidance for non-streaming requests and stays under the SDK's non-streaming timeout guard. `DEFAULT_MAX_TOKENS` lives in `llm/provider.py`.
+3. **`refusal` and `max_tokens` end the run; no server-side fallback (revises D5).**
+   - *Background:* the API guidance for `claude-sonnet-5-5` is to enable server-side refusal fallback by default. That needs the beta endpoint and Beta* types, and it would send a 400 to models that don't support it. It was skipped for HW4 and added to the PRD F3+ backlog.
+   - *Change:* a reply with model `stop_reason` `refusal` or `max_tokens` now ends the run immediately, even if it contains tool_use blocks. A `max_tokens` cut-off can leave a truncated tool input that shouldn't run. `RunResult.stop_reason` widens to `end_turn | max_steps | refusal | max_tokens`. The CLI (commit 4) prints a clear message for each.
+   - *Tests:* `tests/test_loop.py::test_refusal_ends_the_run`, `::test_max_tokens_ends_the_run_without_running_tools`.

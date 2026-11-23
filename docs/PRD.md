@@ -71,6 +71,7 @@ Acceptance criteria:
 - Context budget tracking and `/compact` summarization.
 - A project memory file (`MINICLAUDE.md`) loaded into the system prompt.
 - Skills loaded from `.miniclaude/skills/`.
+- Server-side refusal fallback (`fallbacks`, beta): when a safety classifier declines a turn, the API retries it on a fallback model instead of ending the run.
 
 ## 5. Success metrics
 

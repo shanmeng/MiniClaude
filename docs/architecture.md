@@ -23,7 +23,7 @@ src/miniclaude/
   events.py               # typed loop events (AssistantText, ToolCallStarted, ToolCallFinished)
   prompt.py               # SYSTEM_PROMPT constant
   llm/
-    types.py              # Message, TextBlock, ToolUseBlock, ToolResultBlock, ToolSpec, ModelResponse
+    types.py              # Message, Text/ToolUse/ToolResult/OpaqueBlock, ToolSpec, ModelResponse
     provider.py           # LLMProvider Protocol + AnthropicProvider
     fake.py               # FakeProvider: replays scripted responses (tests)
   tools/
