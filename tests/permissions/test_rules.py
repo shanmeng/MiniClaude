@@ -117,3 +117,16 @@ def test_path_rule_does_not_match_another_tool() -> None:
     rule = parse_rule("read_file(src/**)")
 
     assert not rule.matches("write_file", {"path": "src/app.py", "content": "x"})
+
+
+# F2-AC4: a path that climbs out of the workspace never matches a relative rule.
+@pytest.mark.parametrize(
+    ("rule_text", "path"),
+    [("read_file(.env)", "../.env"), ("read_file(**)", "../secret.txt")],
+)
+def test_path_escaping_the_workspace_never_matches_a_relative_rule(
+    rule_text: str, path: str
+) -> None:
+    rule = parse_rule(rule_text)
+
+    assert not rule.matches("read_file", {"path": path})
