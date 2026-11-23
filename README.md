@@ -8,7 +8,7 @@ A minimal, single-process coding agent for the terminal: an LLM-driven ReAct loo
 
 ```bash
 uv sync
-cp .env.example .env      # add your ANTHROPIC_API_KEY
+cp .env.example .env      # add ANTHROPIC_API_KEY
 uv run pytest             # offline test suite
 uv run miniclaude --version
 uv run miniclaude run "add a --verbose flag to cli.py" --workspace path/to/repo
@@ -32,7 +32,3 @@ uv run miniclaude run "add a --verbose flag to cli.py" --workspace path/to/repo
 * Homework 5 due date is Dec 6 at 11:59pm.
 * P3 Proposal due date is Dec 8 at 11:59pm.
 * Project 3 due date is Dec 15 at 11:59pm.
-
-## Acknowledgment
-
-The overall architecture was informed by studying the open-source project [KamaClaude](https://github.com/youngyangyang04/KamaClaude) (MIT License). MiniClaude is an independent, simplified reimplementation: all code and tests in this repository were written from scratch for this project.
