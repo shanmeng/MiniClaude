@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from miniclaude.permissions.rules import parse_rule
+from miniclaude.permissions.rules import InvalidRuleError, parse_rule
 
 
 # F2-AC3
@@ -130,3 +130,48 @@ def test_path_escaping_the_workspace_never_matches_a_relative_rule(
     rule = parse_rule(rule_text)
 
     assert not rule.matches("read_file", {"path": path})
+
+
+# F2-AC7
+@pytest.mark.parametrize(
+    "text",
+    [
+        "",
+        "   ",
+        "bash(",
+        "bash(git status",
+        "bash)",
+        "(git status)",
+        "read_file()",
+        "bash git status",
+        "bash(git status) extra",
+        "Read_File",
+        "readfile(.env)",
+    ],
+)
+def test_malformed_rule_raises_invalid_rule_error_naming_the_rule(text: str) -> None:
+    with pytest.raises(InvalidRuleError) as excinfo:
+        parse_rule(text)
+
+    assert repr(text) in str(excinfo.value)
+
+
+# F2-AC7
+@pytest.mark.parametrize(
+    "text", ["read_file", "some_future_tool", "bash(git diff:*)", "list_dir(src/**)"]
+)
+def test_well_formed_rule_parses(text: str) -> None:
+    parse_rule(text)
+
+
+# F2-AC7 guard: malformed tool input never matches.
+@pytest.mark.parametrize("tool_input", [{}, {"command": 1}, {"command": None}])
+def test_bash_rule_does_not_match_a_missing_or_non_string_command(
+    tool_input: dict[str, object],
+) -> None:
+    assert not parse_rule("bash(git status)").matches("bash", tool_input)
+
+
+# F2-AC7 guard: malformed tool input never matches.
+def test_path_rule_does_not_match_a_non_string_path() -> None:
+    assert not parse_rule("read_file(**)").matches("read_file", {"path": 3})
