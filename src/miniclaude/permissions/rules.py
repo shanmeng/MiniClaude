@@ -55,8 +55,11 @@ def normalize_path(path: str, workspace_root: PurePath | None = None) -> str:
     parts: list[str] = []
     for part in pure.parts[1:] if pure.is_absolute() else pure.parts:
         if part == "..":
-            if parts:
+            if parts and parts[-1] != "..":
                 parts.pop()
+            elif not pure.is_absolute():
+                # Keep a leading ".." so a path that climbs out of the workspace stays visible.
+                parts.append(part)
         elif part != ".":
             parts.append(part)
     normalized = PurePosixPath(pure.anchor, *parts)
@@ -99,7 +102,9 @@ def _matches_path(pattern: str, path: object, workspace_root: PurePath | None) -
     if not isinstance(path, str):
         return False
     normalized = normalize_path(path, workspace_root)
-    # A relative pattern such as "**" must never match an absolute path outside the workspace.
-    if PurePosixPath(normalized).is_absolute() != PurePosixPath(pattern).is_absolute():
+    candidate = PurePosixPath(normalized)
+    outside_workspace = candidate.is_absolute() or candidate.parts[:1] == ("..",)
+    # A relative pattern such as "**" covers only paths inside the workspace.
+    if outside_workspace and not PurePosixPath(pattern).is_absolute():
         return False
     return glob_to_regex(pattern).fullmatch(normalized) is not None
