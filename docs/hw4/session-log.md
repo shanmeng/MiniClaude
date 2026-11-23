@@ -49,6 +49,8 @@ the step shows and why it matters for the assignment.
 | AC8 loop + CLI | [09-f2-ac8-plan](https://github.com/shanmeng/MiniClaude/blob/main/docs/hw4/screenshots/09-f2-ac8-plan.png), [09-f2-ac8-red-1](https://github.com/shanmeng/MiniClaude/blob/main/docs/hw4/screenshots/09-f2-ac8-red-1.png), [09-f2-ac8-red-2](https://github.com/shanmeng/MiniClaude/blob/main/docs/hw4/screenshots/09-f2-ac8-red-2.png), [09-f2-ac8-green-1](https://github.com/shanmeng/MiniClaude/blob/main/docs/hw4/screenshots/09-f2-ac8-green-1.png), [09-f2-ac8-green-2](https://github.com/shanmeng/MiniClaude/blob/main/docs/hw4/screenshots/09-f2-ac8-green-2.png) | `8434db1` → `2161b94` | End-to-end test: an absolute path to `.env` is denied with `--workspace .`. |
 | Guard test | [09-f2-guard](https://github.com/shanmeng/MiniClaude/blob/main/docs/hw4/screenshots/09-f2-guard.png) | `52018be` | Passes immediately, so committed as its own `test(loop)` commit, not as a red. |
 | F2 done | [09-f2-done](https://github.com/shanmeng/MiniClaude/blob/main/docs/hw4/screenshots/09-f2-done.png) | `38e662a` | 279 tests, 100% coverage on `permissions/`, `loop.py`, `cli.py`. |
+| Refactor 1 | [13-refactor-1](https://github.com/shanmeng/MiniClaude/blob/main/docs/hw4/screenshots/13-refactor-1.png) | `49ebcaa` | Extract `split_command()`; behavior unchanged, no test changes, suite green. |
+| Refactor 2 | [13-refactor-2](https://github.com/shanmeng/MiniClaude/blob/main/docs/hw4/screenshots/13-refactor-2.png) | `9dcb501` | Compile each path glob once per `Rule`, verified with a call-count script; no module-level cache. |
 
 ## Final demo and memory
 

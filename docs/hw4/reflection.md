@@ -42,7 +42,8 @@ AD6 ("tool errors become results, not exceptions") working exactly as designed.
 
 ## Part 3: What strict TDD caught that review alone would not
 
-F2 took 22 commits, from the first red (`a748253`) to the guard test (`52018be`). The red step
+F2 took 22 commits from the first red (`a748253`) to the guard test (`52018be`), plus two refactor
+commits at the end. The red step
 earned its place several times:
 
 - **A test that passed before any code existed.** For AC6, Claude's first "every part allowed" test
@@ -67,6 +68,15 @@ over-splitting is fail-safe, so `make test 2>&1` always asks.
 Two process details I would keep: guard tests that pass immediately went into red commits (or their
 own `test(...)` commit), never into green ones; and an isort quirk that moved imports back and forth
 between red and green was fixed once with a separate `chore(ruff)` commit rather than tolerated.
+
+The refactor step was checked after every green and skipped while there was nothing real to clean
+up; I preferred no refactor commit to an empty one. One candidate after AC7, dropping the
+docs URL from pydantic's config error messages, was deferred: it changes user-visible output, so it
+is a behavior change for a later red/green, not a refactor. Once all eight criteria were green, two
+behavior-preserving refactors were worth doing, each with the full suite green and no test changes:
+`49ebcaa` extracts the bash splitting into a pure `split_command()`, and `9dcb501` compiles each
+path rule's glob once when the rule is parsed instead of on every match (stored on the frozen
+`Rule`, not in a module-level cache, as CLAUDE.md requires).
 
 ## Working with an AI pair: where oversight was needed
 

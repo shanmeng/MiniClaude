@@ -14,14 +14,29 @@ uv run miniclaude --version
 uv run miniclaude run "add a --verbose flag to cli.py" --workspace path/to/repo
 ```
 
-`miniclaude run` prints the model's text, a `→` line for each tool call and a `✓`/`✗` line for its result. It exits with 0 when the model finishes, and with 1 if it stops early (step limit, refusal, output token limit or API error). The model defaults to `claude-sonnet-5-5`; set `MINICLAUDE_MODEL` in `.env` to change it. Until the F2 permission policy lands, tools run without asking, so point `--workspace` at a repo you don't mind it editing.
+`miniclaude run` prints the model's text, a `→` line for each tool call and a `✓`/`✗` line for its result. It exits with 0 when the model finishes, and with 1 if it stops early (step limit, refusal, output token limit or API error). The model defaults to `claude-sonnet-5-5`; set `MINICLAUDE_MODEL` in `.env` to change it.
+
+Every tool call goes through a permission policy loaded from `<workspace>/.miniclaude/settings.json`. Without that file, every call asks `[y/N]` first. Example:
+
+```json
+{
+  "permissions": {
+    "allow": ["read_file", "list_dir", "bash(git status)", "bash(git diff:*)"],
+    "deny": ["read_file(.env)"],
+    "ask": ["write_file"]
+  }
+}
+```
+
+`deny` beats `ask`, which beats `allow`. Rule syntax and matching are described in [PRD §F2](docs/PRD.md).
 
 ## Docs
 
 - [Product requirements](docs/PRD.md)
 - [Architecture & decisions](docs/architecture.md)
 - [Implementation plans](docs/plans/)
-- [HW4 reflection & annotated session logs](docs/hw4/)
+- HW4: [reflection](docs/hw4/reflection.md), [annotated session log](docs/hw4/session-log.md),
+  [screenshots](docs/hw4/screenshots/)
 
 ## Roadmap
 
