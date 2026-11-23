@@ -145,3 +145,71 @@ def test_relative_deny_rule_catches_absolute_path_inside_workspace(path: str) ->
     )
 
     assert policy.decide("read_file", {"path": path}) is Decision.DENY
+
+
+SEPARATORS = ["&&", ";", "|", "||", "&", "\n"]
+GIT_READ_RULES = ["bash(git status:*)", "bash(git diff:*)"]
+
+
+# F2-AC6
+@pytest.mark.parametrize("sep", SEPARATORS)
+def test_chained_command_is_allowed_when_every_part_is_allowed(sep: str) -> None:
+    # Exact rules, so only splitting (not a prefix covering the whole string) can allow it.
+    policy = PermissionPolicy(allow=["bash(git status)", "bash(git diff)"])
+
+    assert policy.decide("bash", {"command": f"git status {sep} git diff"}) is Decision.ALLOW
+
+
+# F2-AC6: a prefix rule must not cover whatever is chained after the allowed command.
+@pytest.mark.parametrize("sep", SEPARATORS)
+def test_chained_command_with_an_unmatched_part_is_ask(sep: str) -> None:
+    policy = PermissionPolicy(allow=GIT_READ_RULES)
+
+    assert policy.decide("bash", {"command": f"git status {sep} rm -rf src"}) is Decision.ASK
+
+
+# F2-AC6
+@pytest.mark.parametrize("sep", SEPARATORS)
+def test_chained_command_with_a_denied_part_is_deny(sep: str) -> None:
+    policy = PermissionPolicy(allow=GIT_READ_RULES, deny=["bash(rm:*)"])
+
+    assert policy.decide("bash", {"command": f"git status {sep} rm -rf src"}) is Decision.DENY
+
+
+# F2-AC6
+@pytest.mark.parametrize(
+    "command", ["git status & rm -rf src", "git status\nrm -rf src"], ids=["ampersand", "newline"]
+)
+def test_single_ampersand_and_newline_split_the_command(command: str) -> None:
+    policy = PermissionPolicy(allow=GIT_READ_RULES)
+
+    assert policy.decide("bash", {"command": command}) is not Decision.ALLOW
+
+
+# F2-AC6: substitution and redirection can run or write anything, whatever the prefix.
+@pytest.mark.parametrize(
+    "command",
+    [
+        "git diff $(rm -rf src)",
+        "git diff `rm -rf src`",
+        "git diff > src/app.py",
+        "git diff < patch.txt",
+    ],
+    ids=["dollar-paren", "backtick", "redirect-out", "redirect-in"],
+)
+def test_substitution_or_redirection_is_never_allowed_by_a_bash_rule(command: str) -> None:
+    policy = PermissionPolicy(allow=GIT_READ_RULES)
+
+    assert policy.decide("bash", {"command": command}) is Decision.ASK
+
+
+# F2-AC6
+@pytest.mark.parametrize(
+    "command",
+    ["git diff $(rm -rf src)", "git diff `rm -rf src`", "git diff > src/app.py"],
+    ids=["dollar-paren", "backtick", "redirect-out"],
+)
+def test_substitution_or_redirection_is_still_denied_by_a_matching_deny_rule(command: str) -> None:
+    policy = PermissionPolicy(allow=GIT_READ_RULES, deny=["bash(git diff:*)"])
+
+    assert policy.decide("bash", {"command": command}) is Decision.DENY
