@@ -19,14 +19,18 @@ user goal
 ```
 src/miniclaude/
   cli.py                  # entry point: `miniclaude run|chat`
-  loop.py                 # AgentLoop
+  loop.py                 # AgentLoop, RunResult
+  events.py               # typed loop events (AssistantText, ToolCallStarted, ToolCallFinished)
+  prompt.py               # SYSTEM_PROMPT constant
   llm/
-    types.py              # Message, ToolUse, ToolResult, ModelResponse (pydantic)
+    types.py              # Message, TextBlock, ToolUseBlock, ToolResultBlock, ToolSpec, ModelResponse
     provider.py           # LLMProvider Protocol + AnthropicProvider
     fake.py               # FakeProvider: replays scripted responses (tests)
   tools/
-    base.py               # Tool Protocol: name, description, input_schema, run()
+    base.py               # Tool Protocol, ToolOutput, BaseTool (pydantic input validation)
     registry.py           # ToolRegistry
+    workspace.py          # resolve_in_workspace(): workspace-root confinement (AD7)
+    output.py             # truncate(): caps tool output with a "[truncated]" marker
     builtin/              # read_file, write_file, list_dir, bash
   permissions/
     rules.py              # Rule parsing: "bash(git diff:*)" → Rule
