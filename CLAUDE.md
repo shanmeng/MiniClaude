@@ -11,7 +11,7 @@ Requirements, acceptance criteria and architecture decisions are imported below.
 @docs/PRD.md
 @docs/architecture.md
 
-**Current state:** F1 has landed: `cli.py` (`miniclaude run`), `loop.py`, `events.py`, `prompt.py`, `llm/` (types, `AnthropicProvider`, `FakeProvider`) and `tools/` (registry, workspace confinement, the four built-in tools). See `docs/plans/f1-agent-loop.md`, including its "Deviations from the plan" section. Not yet built: `permissions/` (F2). When a planned module lands, update this line.
+**Current state:** F1 has landed: `cli.py` (`miniclaude run`), `loop.py`, `events.py`, `prompt.py`, `llm/` (types, `AnthropicProvider`, `FakeProvider`) and `tools/` (registry, workspace confinement, the four built-in tools). See `docs/plans/f1-agent-loop.md`, including its "Deviations from the plan" section. F2 has landed: `permissions/` (`rules.py`, `policy.py`, `approval.py`), gating in `AgentLoop`, and the CLI's y/n `terminal_approver`, with rules loaded from `<workspace>/.miniclaude/settings.json` (an empty, all-`ASK` policy if absent). See `docs/plans/f2-permission-policy.md`. Next: Project 3 (F3+). When a planned module lands, update this line.
 
 ## Tech stack
 

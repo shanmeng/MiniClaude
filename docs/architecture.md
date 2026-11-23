@@ -9,7 +9,7 @@ user goal
       → LLMProvider       (llm/: Protocol; AnthropicProvider for real, FakeProvider for tests)
       → ToolRegistry      (tools/registry.py: name → Tool, exports JSON schemas)
       → PermissionPolicy  (permissions/policy.py: ALLOW / DENY / ASK)
-      → Approver          (callback; CLI prompts y/n on ASK)
+      → Approver          (permissions/approval.py: callback; CLI prompts y/n on ASK)
       → Tool.run(input)   (tools/builtin/*.py)
   → final answer
 ```
@@ -34,7 +34,8 @@ src/miniclaude/
     builtin/              # read_file, write_file, list_dir, bash
   permissions/
     rules.py              # Rule parsing: "bash(git diff:*)" → Rule
-    policy.py             # PermissionPolicy.decide()
+    policy.py             # PermissionPolicy.decide(), PermissionPolicy.from_file()
+    approval.py           # Approver Protocol: the injected y/n callback for ASK
 tests/                    # mirrors src/; pure unit tests, no network
 ```
 

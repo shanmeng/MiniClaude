@@ -16,6 +16,8 @@ from miniclaude.llm.types import (
     ToolResultBlock,
     ToolUseBlock,
 )
+from miniclaude.permissions.approval import Approver
+from miniclaude.permissions.policy import Decision, PermissionPolicy
 from miniclaude.tools.base import ToolOutput
 from miniclaude.tools.registry import ToolRegistry
 
@@ -53,7 +55,10 @@ class AgentLoop:
         system: str,
         max_steps: int = DEFAULT_MAX_STEPS,
         on_event: Callable[[Event], None] = _ignore_event,
+        policy: PermissionPolicy | None = None,
+        approver: Approver | None = None,
     ) -> None:
+        """Create a loop; with `policy=None` tool calls are not permission-gated."""
         if max_steps < 1:
             raise ValueError(f"max_steps must be at least 1, got {max_steps}")
         self._provider = provider
@@ -61,6 +66,8 @@ class AgentLoop:
         self._system = system
         self._max_steps = max_steps
         self._on_event = on_event
+        self._policy = policy
+        self._approver = approver
 
     def run(self, goal: str) -> RunResult:
         """Run the loop for `goal`; provider errors propagate, tool errors do not (AD6)."""
@@ -110,7 +117,30 @@ class AgentLoop:
         tool = self._registry.get(tool_use.name)
         if tool is None:
             return ToolOutput(content=f"Unknown tool: {tool_use.name}", is_error=True)
+        refusal = self._check_permission(tool_use)
+        if refusal is not None:
+            return refusal
         try:
             return tool.run(tool_use.input)
         except Exception as exc:  # AD6: a buggy tool becomes an error result the model can see.
             return ToolOutput(content=f"{type(exc).__name__}: {exc}", is_error=True)
+
+    def _check_permission(self, tool_use: ToolUseBlock) -> ToolOutput | None:
+        """Return an error output if the call may not run, or None if it may (F2-AC8)."""
+        if self._policy is None:
+            return None
+        decision = self._policy.decide(tool_use.name, tool_use.input)
+        if decision is Decision.ALLOW:
+            return None
+        # Distinct texts so the model can tell a fixed rule from a one-off human "no".
+        if decision is Decision.DENY:
+            return ToolOutput(
+                content=f"Permission denied by policy: {tool_use.name} was not run.",
+                is_error=True,
+            )
+        if self._approver is not None and self._approver(tool_use.name, tool_use.input):
+            return None
+        return ToolOutput(
+            content=f"The user declined this {tool_use.name} call; it was not run.",
+            is_error=True,
+        )

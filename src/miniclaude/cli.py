@@ -6,9 +6,9 @@ import argparse
 import json
 import os
 import sys
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from pathlib import Path
-from typing import TextIO
+from typing import Any, TextIO
 
 import anthropic
 from dotenv import find_dotenv, load_dotenv
@@ -17,6 +17,8 @@ from miniclaude import __version__
 from miniclaude.events import AssistantText, Event, ToolCallFinished, ToolCallStarted
 from miniclaude.llm.provider import AnthropicProvider, LLMProvider
 from miniclaude.loop import DEFAULT_MAX_STEPS, AgentLoop, RunResult
+from miniclaude.permissions.approval import Approver
+from miniclaude.permissions.policy import PermissionPolicy
 from miniclaude.prompt import SYSTEM_PROMPT
 from miniclaude.tools.builtin import default_tools
 from miniclaude.tools.registry import ToolRegistry
@@ -27,6 +29,8 @@ EXIT_STOPPED = 1
 EXIT_USAGE = 2
 _MAX_INPUT_PREVIEW = 120
 _MAX_ERROR_PREVIEW = 200
+_SETTINGS_FILE = Path(".miniclaude") / "settings.json"
+_YES_ANSWERS = frozenset({"y", "yes"})
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -64,6 +68,13 @@ def main(argv: Sequence[str] | None = None) -> int:
         print(f"error: workspace is not a directory: {workspace}", file=sys.stderr)
         return EXIT_USAGE
 
+    # Config errors fail fast, before any API call (AD6).
+    try:
+        policy = load_policy(workspace)
+    except ValueError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return EXIT_USAGE
+
     # Search from the user's cwd, not from this module's location.
     load_dotenv(find_dotenv(usecwd=True))
     if not os.environ.get("ANTHROPIC_API_KEY"):
@@ -82,7 +93,29 @@ def main(argv: Sequence[str] | None = None) -> int:
         max_steps=args.max_steps,
         out=sys.stdout,
         err=sys.stderr,
+        policy=policy,
+        approver=terminal_approver(sys.stdin, sys.stderr),
     )
+
+
+def load_policy(workspace: Path) -> PermissionPolicy:
+    """Load `<workspace>/.miniclaude/settings.json`, or an empty (all-ASK) policy if absent."""
+    settings = workspace / _SETTINGS_FILE
+    if settings.is_file():
+        return PermissionPolicy.from_file(settings, workspace_root=workspace)
+    return PermissionPolicy(workspace_root=workspace)
+
+
+def terminal_approver(inp: TextIO, out: TextIO) -> Approver:
+    """Build an approver that prints the call to `out` and reads y/N from `inp`."""
+
+    def approve(tool_name: str, tool_input: Mapping[str, Any]) -> bool:
+        # The full input, unshortened: the user should see exactly what they approve.
+        args = json.dumps(dict(tool_input), ensure_ascii=False)
+        print(f"Allow {tool_name} {args}? [y/N] ", end="", file=out, flush=True)
+        return inp.readline().strip().lower() in _YES_ANSWERS
+
+    return approve
 
 
 def run_command(
@@ -93,6 +126,8 @@ def run_command(
     max_steps: int,
     out: TextIO,
     err: TextIO,
+    policy: PermissionPolicy | None = None,
+    approver: Approver | None = None,
 ) -> int:
     """Run the agent loop on `goal`, printing progress to `out`; returns an exit code."""
 
@@ -105,6 +140,8 @@ def run_command(
         system=SYSTEM_PROMPT,
         max_steps=max_steps,
         on_event=show,
+        policy=policy,
+        approver=approver,
     )
     try:
         result = loop.run(goal)
